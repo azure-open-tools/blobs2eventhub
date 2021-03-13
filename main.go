@@ -9,13 +9,15 @@ import (
 	"runtime"
 	"sync"
 
+	eh "github.com/Azure/azure-event-hubs-go/v3"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	//"github.com/azure-open-tools/event-hubs/sender"
 	"github.com/spf13/cobra"
 )
 
 type container struct {
 	Name  string `json:"name"`
-	Blobs []blob `json:"blobs"`
+	Blobs []Blob `json:"blobs"`
 }
 
 type storageAccount struct {
@@ -84,7 +86,7 @@ func exec(args arguments) {
 
 	metadataFilter := createMetadataFilter(args.MetadataFilter)
 
-	c := make(chan *container)
+	c := make(chan *eh.Event)
 	var wg sync.WaitGroup
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		listContainer, err := serviceURL.ListContainersSegment(ctx, marker, azblob.ListContainersSegmentOptions{})
@@ -109,8 +111,13 @@ func exec(args arguments) {
 
 	// channel to collect results
 	for elem := range c {
-		// map and send
-		foundContainer = append(foundContainer, *elem)
+		fmt.Println(c)
+		// send
+		//builder := sender.NewSenderBuilder()
+		//builder.SetConnectionString(getConnString(""))
+		//snd, _ := builder.GetSender()
+		//snd.AddProperties(Blob.Metadata)
+		//foundContainer = append(foundContainer, *elem)
 	}
 
 	s.Container = foundContainer

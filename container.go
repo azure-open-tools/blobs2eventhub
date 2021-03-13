@@ -20,7 +20,7 @@ func getConnString(connString string) string {
 	}
 }
 
-func parseContainer(azContainer azblob.ContainerItem, p pipeline.Pipeline, accountName string, containerFilter string, blobFilter string, wg *sync.WaitGroup, marker azblob.Marker, metadataFilter []Filter) {
+func parseContainer(azContainer azblob.ContainerItem, p pipeline.Pipeline, accountName string, containerFilter string, blobFilter string, c chan *[]eh.Event, wg *sync.WaitGroup, marker azblob.Marker, metadataFilter []Filter) {
 	defer wg.Done()
 	containerName := azContainer.Name
 
@@ -39,6 +39,7 @@ func parseContainer(azContainer azblob.ContainerItem, p pipeline.Pipeline, accou
 		blobMarker = listBlob.NextMarker
 		blobItems := listBlob.Segment.BlobItems
 		foundBlobs := parseBlobs(blobItems, blobFilter, containerServiceURL, metadataFilter)
-		// send to channel??
+		events := CreateEvents(foundBlobs)
+		// send to channel
 	}
 }

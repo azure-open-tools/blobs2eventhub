@@ -8,21 +8,20 @@ import (
 	"sync"
 
 	azblob "github.com/Azure/azure-storage-blob-go/azblob"
-	sender "github.com/azure-open-tools/event-hubs/sender"
 )
 
-type blob struct {
+type Blob struct {
 	Name       string            `json:"name"`
 	Content    []byte            `json:"content"`
 	Properties map[string]string `json:"properties"`
 	Metadata   map[string]string `json:"metadata"`
 }
 
-func parseBlobs(blobItems []azblob.BlobItemInternal, blobFilter string, containerURL azblob.ContainerURL, metadataFilter []Filter) []blob {
+func parseBlobs(blobItems []azblob.BlobItemInternal, blobFilter string, containerURL azblob.ContainerURL, metadataFilter []Filter) []Blob {
 	var blobWg sync.WaitGroup
-	bc := make(chan *blob)
+	bc := make(chan *Blob)
 
-	var blobs []blob
+	var blobs []Blob
 
 	for _, blobItem := range blobItems {
 		if (len(blobFilter) > 0 && strings.Contains(blobItem.Name, blobFilter)) &&
@@ -43,19 +42,13 @@ func parseBlobs(blobItems []azblob.BlobItemInternal, blobFilter string, containe
 	return blobs
 }
 
-func createBlob(blobItem azblob.BlobItemInternal, wg *sync.WaitGroup, c chan *blob, containerURL azblob.ContainerURL) {
+func createBlob(blobItem azblob.BlobItemInternal, wg *sync.WaitGroup, c chan *Blob, containerURL azblob.ContainerURL) {
 	defer wg.Done()
 
-	blob := new(blob)
+	blob := new(Blob)
 	blob.Name = blobItem.Name
 	blob.Metadata = blobItem.Metadata
 	blob.Content = downloadBlob(blobItem.Name, containerURL)
-
-	builder := sender.NewSenderBuilder()
-	builder.SetConnectionString(getConnString(""))
-	//builder.AddProperties()
-	snd, err := builder.GetSender()
-	snd.AddProperties(blob.Metadata)
 
 	c <- blob
 }
