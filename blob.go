@@ -7,50 +7,42 @@ import (
 	"strings"
 	"sync"
 
+	eh "github.com/Azure/azure-event-hubs-go/v3"
 	azblob "github.com/Azure/azure-storage-blob-go/azblob"
 )
 
-type Blob struct {
-	Name       string            `json:"name"`
-	Content    []byte            `json:"content"`
-	Properties map[string]string `json:"properties"`
-	Metadata   map[string]string `json:"metadata"`
-}
-
-func parseBlobs(blobItems []azblob.BlobItemInternal, blobFilter string, containerURL azblob.ContainerURL, metadataFilter []Filter) []Blob {
+func parseBlobs(blobItems []azblob.BlobItemInternal, blobFilter string, containerURL azblob.ContainerURL, metadataFilter []Filter) *[]*eh.Event {
 	var blobWg sync.WaitGroup
-	bc := make(chan *Blob)
+	ec := make(chan *eh.Event)
 
-	var blobs []Blob
+	var events []*eh.Event
 
 	for _, blobItem := range blobItems {
-		if (len(blobFilter) > 0 && strings.Contains(blobItem.Name, blobFilter)) &&
-			(len(metadataFilter) == 0 || (len(metadataFilter) > 0 && containsMetadataMatch(blobItem.Metadata, metadataFilter))) {
+		if (len(blobFilter) == 0 || strings.Contains(blobItem.Name, blobFilter)) &&
+			(len(metadataFilter) == 0 || containsMetadataMatch(blobItem.Metadata, metadataFilter)) {
 			blobWg.Add(1)
-			go createBlob(blobItem, &blobWg, bc, containerURL)
+			go createEvent(blobItem, &blobWg, ec, containerURL)
 		}
 	}
 
 	go func() {
 		blobWg.Wait()
-		close(bc)
+		close(ec)
 	}()
 
-	for elem := range bc {
-		blobs = append(blobs, *elem)
+	for elem := range ec {
+		events = append(events, elem)
 	}
-	return blobs
+	return &events
 }
 
-func createBlob(blobItem azblob.BlobItemInternal, wg *sync.WaitGroup, c chan *Blob, containerURL azblob.ContainerURL) {
+func createEvent(blobItem azblob.BlobItemInternal, wg *sync.WaitGroup, c chan *eh.Event, containerURL azblob.ContainerURL) {
 	defer wg.Done()
 
-	blob := new(Blob)
-	blob.Name = blobItem.Name
-	blob.Metadata = blobItem.Metadata
-	blob.Content = downloadBlob(blobItem.Name, containerURL)
+	content := downloadBlob(blobItem.Name, containerURL)
+	event := CreateEvent(blobItem, content)
 
-	c <- blob
+	c <- event
 }
 
 func downloadBlob(blobName string, containerUrl azblob.ContainerURL) []byte {

@@ -2,28 +2,20 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	eh "github.com/Azure/azure-event-hubs-go/v3"
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	//"github.com/azure-open-tools/event-hubs/sender"
+
+	sender "github.com/azure-open-tools/event-hubs/sender"
 	"github.com/spf13/cobra"
 )
-
-type container struct {
-	Name  string `json:"name"`
-	Blobs []Blob `json:"blobs"`
-}
-
-type storageAccount struct {
-	Name      string      `json:"name"`
-	Container []container `json:"container"`
-}
 
 type arguments struct {
 	AccountName              string
@@ -65,8 +57,24 @@ func init() {
 	rootCmd.SetVersionTemplate(getVersion())
 }
 
+func getConnString(connString string) string {
+	if len(strings.TrimSpace(connString)) > 0 {
+		return connString
+	} else {
+		return os.Getenv("EVENTHUB_SEND_CONNSTR")
+	}
+}
+
 func exec(args arguments) {
 	ctx := context.Background()
+
+	builder := sender.NewSenderBuilder()
+	builder.SetConnectionString(getConnString(args.EventhubConnectionString))
+	snd, err := builder.GetSender()
+
+	if err != nil {
+		log.Fatal("Error creating eventhub sender")
+	}
 
 	// Create a default request pipeline using your storage account name and account key
 	credential, authErr := azblob.NewSharedKeyCredential(args.AccountName, args.AccessKey)
@@ -80,13 +88,9 @@ func exec(args arguments) {
 
 	serviceURL := azblob.NewServiceURL(*URL, p)
 
-	s := new(storageAccount)
-	s.Name = URL.String()
-	var foundContainer []container
-
 	metadataFilter := createMetadataFilter(args.MetadataFilter)
 
-	c := make(chan *eh.Event)
+	c := make(chan *[]*eh.Event)
 	var wg sync.WaitGroup
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		listContainer, err := serviceURL.ListContainersSegment(ctx, marker, azblob.ListContainersSegmentOptions{})
@@ -111,22 +115,8 @@ func exec(args arguments) {
 
 	// channel to collect results
 	for elem := range c {
-		fmt.Println(c)
-		// send
-		//builder := sender.NewSenderBuilder()
-		//builder.SetConnectionString(getConnString(""))
-		//snd, _ := builder.GetSender()
-		//snd.AddProperties(Blob.Metadata)
-		//foundContainer = append(foundContainer, *elem)
+		snd.SendEventsAsBatch(context.Background(), elem)
 	}
-
-	s.Container = foundContainer
-	print(*s)
-}
-
-func print(sa storageAccount) {
-	m, _ := json.Marshal(sa)
-	fmt.Println(string(m))
 }
 
 func main() {
